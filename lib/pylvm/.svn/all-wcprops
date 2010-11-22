@@ -1,0 +1,35 @@
+K 25
+svn:wc:ra_dav:version-url
+V 41
+/svn/!svn/ver/10/trunk/virttool/lib/pylvm
+END
+objects.py
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/10/trunk/virttool/lib/pylvm/objects.py
+END
+lvm.py
+K 25
+svn:wc:ra_dav:version-url
+V 48
+/svn/!svn/ver/10/trunk/virttool/lib/pylvm/lvm.py
+END
+i18n.py
+K 25
+svn:wc:ra_dav:version-url
+V 49
+/svn/!svn/ver/10/trunk/virttool/lib/pylvm/i18n.py
+END
+__init__.py
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/10/trunk/virttool/lib/pylvm/__init__.py
+END
+ioutilities.py
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svn/!svn/ver/10/trunk/virttool/lib/pylvm/ioutilities.py
+END

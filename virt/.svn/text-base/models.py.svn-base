@@ -1,0 +1,386 @@
+from django.db import models
+from django.db.models import F,Q
+import libvirt
+from lib.app import snmp, xmltool
+from django.utils.translation import ugettext as _
+from constants import * 
+import fields
+from virt import helpforms
+import settings
+
+class Node(models.Model):    
+    
+    name = models.CharField(_('Name'), max_length=100, unique=True)
+    
+    def __unicode__(self):
+        return self.name
+        
+    hostname = models.CharField(_('Hostname'), max_length=255, help_text=helpforms.NODE_HOSTNAME)
+    uri = models.CharField(_('URI'), max_length=255, null=True, blank=True, default=None)
+    description = models.CharField(_('Description'), blank=False, max_length=255)
+    type = models.IntegerField(_('Node Type'), default=0, choices=VIRT_INTERFACE_NAME, \
+                                                          help_text=helpforms.NODE_TYPE)
+    state = models.IntegerField(default=0, choices=NODE_STATE)
+    capabilities = models.TextField(null=True,blank=True)
+    defaultbridge = models.CharField(_('Bridge Default'), max_length=50, null=True, blank=True, \
+                                            default=None, help_text=helpforms.NODE_DEFAULTBRIDGE)
+    active = models.BooleanField(_('Active'), default=True,null=False)
+    datecreated = models.DateTimeField(auto_now_add=True, null=False)
+    datemodified = models.DateTimeField(auto_now=True, null=False)
+    
+    
+    def getlibvirt(self):
+        """
+          Return instance libvirt.virConnect and 
+          dict(libvirt.libvirtError[code,message])
+        """
+
+        VIRT_INTERFACE_ = VIRT_INTERFACE_URI[self.type] %self.hostname
+        URI = self.uri or VIRT_INTERFACE_
+        try:
+            return libvirt.open(URI), None                       
+        except libvirt.libvirtError, le:
+            return None, dict(code=le.get_error_code(), msg=le.get_error_message())
+    
+    
+    def update_capabilities(self,autosave=True,libvirtnode=None):
+        """
+          Update name, capabilities, state from libvirt 
+        """
+        if libvirtnode:
+            libvirtnode_, error_ = libvirtnode,None
+        else:
+            libvirtnode_, error_ = self.getlibvirt()
+        if libvirtnode_:
+            self.capabilities = libvirtnode_.getCapabilities()
+            self.state = 1
+        else:
+            self.state = 2            
+        if autosave == True:
+            self.save()
+
+            
+    def getnetdev(self,version=1,community="public"):
+        """
+          Get network interfaces via SNMP 
+        """
+        snmp_ = snmp.Snmp()
+        devlist = []
+        NOTLISTED=['vif','lo']
+        
+        for dev in snmp_.snmpwalk(self.hostname,"1.3.6.1.2.1.2.2.1.2",version,community):
+            invalidfound = False
+            for nl in NOTLISTED:
+                if dev.split('STRING:')[1].strip().startswith(nl):
+                    invalidfound=True
+            if invalidfound == False:
+                devlist.append(dev.split('STRING:')[1].strip())
+        return devlist
+                    
+
+    def import_domains(self,libvirtnode=None):
+        """
+          Import all domains from Node 
+        """        
+        if libvirtnode:
+            libvirtnode_, erro_ = libvirtnode, None
+        else:
+            libvirtnode_, error_ = self.getlibvirt()
+            
+        if libvirtnode_:
+            libvirtdomains = [ libvirtnode_.lookupByID(ID) for ID in libvirtnode_.listDomainsID()[1:] ]
+            for libvirtdomain in libvirtdomains:
+                
+                # import domains
+                if Domain.objects.filter(name=libvirtdomain.name()).count() == 0:
+                    new_domain = Domain()
+                    new_domain.name=libvirtdomain.name()
+                    new_domain.description='Virtual Machine %s' %libvirtdomain.name()
+                    new_domain.node=self
+                    new_domain.state=libvirtdomain.info()[0]
+                    
+                    if self.defaultbridge:
+                        options = dict(defaultbridge=self.defaultbridge)
+                    else:
+                        options = None
+                        
+                    xmlf = xmltool.getxml(libvirtdomain.XMLDesc(0), options)
+                    new_domain.type = xmlf.get('type')
+                    new_domain.xml= xmlf.get('domain')
+                    new_domain.save()
+                    
+                    # import devices
+                    for d in xmlf.get('devices'):
+                        new_device = Device()
+                        new_device.domain = new_domain
+                        new_device.type = d.get('type')
+                        new_device.xml = d.get('xml')
+                        new_device.save()
+
+                #else:
+                #    existing_domain = Domain.objects.get(name=libvirtdomain.name())
+                #    existing_domain.state = libvirtdomain.info()[0]
+                #    existing_domain.xml= xmltool.formatxml(libvirtdomain.XMLDesc(0))
+                #    existing_domain.save()
+                        
+    
+
+    def getdict(self):
+        """
+           Return Capabilities dictionary python 
+        """
+        return xmltool.get_capabilities_dict(self.capabilities)
+        
+                        
+    class Meta:
+        ordering = 'name',
+        verbose_name = _('Node')
+        verbose_name_plural = (_('Nodes'))
+        
+
+
+class Domain(models.Model):
+
+    node = models.ForeignKey(Node, verbose_name=_('Node'))
+    name = models.CharField(_('Name'), max_length=100)
+    uuid = models.CharField(_('UUID'), max_length=36,blank=True)
+    hostname = models.CharField(_('Host'), max_length=200, blank=True, null=True, default=None)
+    description = models.CharField(_('Description'), blank=False, max_length=200)
+    type = models.CharField(_('Type'), max_length=20, choices=DOM_TYPES)
+    xml = models.TextField(_('XML'))
+    autostart = models.BooleanField(_('Auto start'), default=True)
+    priority = models.IntegerField(_('Priority'), default=10)    
+    state = models.IntegerField(default=0, choices=DOMAIN_STATE)
+    datecreated = models.DateTimeField(auto_now_add=True, null=False)
+    datemodified = models.DateTimeField(auto_now=True, null=False)
+    
+    
+    def getlibvirt(self,libvirtnode=None):
+        """
+          Return Domain libvirt
+        """     
+          
+        if libvirtnode:
+            libvirtnode_, error_ = libvirtnode, None
+        else:
+            libvirtnode_, error_ = self.node.getlibvirt()
+        try:    
+            return libvirtnode_.lookupByName(self.name), error_
+        except:
+            return None, error_
+            
+    
+    def update_state(self,libvirtnode=None):
+        """
+           Update state Domain 
+        """
+        
+        # 96 = Powered Off by user, 97 = Wait Migrate, 99 = Disabled
+        if self.state not in [96,97,99]:   
+            change=False         
+            state = self.state
+            libvirtdomain, error_ = self.getlibvirt(libvirtnode)
+            if libvirtdomain:
+                state_ = libvirtdomain.info()[0]
+                if state_ != state:
+                    change=True
+                    self.state = state_
+            else:
+                self.state = 98
+                change=True
+                
+            if change == True:
+                self.save()
+    
+    
+    #
+    #  GETs Devices 
+    #
+    
+    def getemulator(self):
+        return self.device_set.filter(type='emulator')
+    def getdisk(self):
+        return self.device_set.filter(type='disk')                            
+    def getinterface(self):
+        return self.device_set.filter(type='interface')        
+    def getgraphics(self):
+        return self.device_set.filter(type='graphics')
+    def getinput(self):
+        return self.device_set.filter(type='input')
+    def getconsole(self):
+        return self.device_set.filter(type='console')
+    def getserial(self):
+        return self.device_set.filter(type='serial')
+    def getparallel(self):
+        return self.device_set.filter(type='parallel')
+    def getchannel(self):
+        return self.device_set.filter(type='channel')    
+    def getsound(self):
+        return self.device_set.filter(type='sound')
+    def getvideo(self):
+        return self.device_set.filter(type='video')
+    def gethostdev(self):
+        return self.device_set.filter(type='hostdev')
+    def getcontroller(self):
+        return self.device_set.filter(type='controller')
+            
+    
+    
+    def getdict(self):
+        """
+           Return Domain dictionary python 
+        """
+        return xmltool.get_domain_dict(self.xml)
+                    
+    
+    def getxml(self):
+        """
+           Return Domain XML Format 
+        """
+        
+        xmldomain = str()
+        xmldomain = self.xml
+
+        xmldomain = xmldomain.replace('</domain>','')
+        xmldomain+="<devices>\n"
+        for devicetype in ['emulator',
+                           'disk',
+                           'controller',
+                           'interface',
+                           'graphics',
+                           'input',
+                           'parallel',
+                           'serial',
+                           'console',
+                           'channel',
+                           'sound',
+                           'video',
+                           'hostdev']:
+            for dxml in self.device_set.filter(type=devicetype):
+                xmldomain+="%s\n" %dxml.xml
+        xmldomain+="</devices>\n</domain>"
+
+        return xmldomain
+            
+    
+    def __unicode__(self):
+        return self.name 
+        
+        
+    class Meta:
+        ordering = 'name',
+        verbose_name = _('Domain')
+        verbose_name_plural = (_('Domains'))
+
+        
+#
+#  Transport Domain
+#
+class Transport(models.Model):
+    node = models.ForeignKey(Node, verbose_name=_('Node'))
+    domain = models.ForeignKey(Domain, verbose_name=_('Domain'))
+
+    def __unicode__(self):
+        return "%s %s" %(self.node, self.domain)
+
+    class Meta:
+        ordering = 'node',
+        verbose_name = _('Transport')
+        verbose_name_plural = (_('Transport List'))
+
+#
+# Devices
+#
+class Device(models.Model):
+    
+    domain = models.ForeignKey(Domain, verbose_name=_('Domain'))
+    description = models.CharField(_('Description'), max_length=255, null=True, blank=True, default=None)
+    type = models.CharField(_('Device Type'), max_length=50, choices=DEVICE_TYPES)  
+    xml = models.TextField(_('XML'))
+    
+    def __unicode__(self):
+        return "%s - %s : %s" %(self.domain,self.type,self.description)
+    
+    
+    
+    def isconnected(self,libvirtdomain=None):
+        """
+           Return Boolean
+           Check if device is connected
+        """
+        try:
+            if libvirtdomain:
+                libvirtdomain_, error_ = libvirtdomain, None
+            else:
+                libvirtdomain_, error_ = self.domain.getlibvirt()
+            if libvirtdomain_:
+                # current domain xml - libvirt 
+                domxml = xmltool.getxml(libvirtdomain_.XMLDesc(0))         
+                # list devices 
+                for devicexml in domxml.get('devices'):         
+                    # check type 
+                    devicedict = xmltool.get_device_dict(devicexml.get('xml'))                
+                    # if device is valid 
+                    if devicedict:
+                        # check type 
+                        if devicedict.get('type') == self.type:
+                            # check device == device from (XMLDesc)
+                            if self.getdict() == devicedict:
+                                return True
+        except Exception, e:
+            print e
+            pass
+            
+        return False
+        
+
+    
+    def getdict(self):
+        """
+           Return Device dictionary python
+        """
+        return xmltool.get_device_dict(self.xml)
+    
+                
+    class Meta:
+        ordering = 'type',
+        verbose_name = _('Device')
+        verbose_name_plural = (_('Devices'))
+        
+        
+#
+# Graphics Domain 
+#
+
+class GraphDomain(models.Model):
+    domain = models.ForeignKey(Domain, verbose_name=_('Domain'))
+    img = models.URLField(verify_exists=False)
+    description = models.CharField(_('Descrption'), max_length=100)
+    
+    def __unicode__(self):
+        return self.description
+    
+    class Meta: 
+        verbose_name = _('Graph')
+        verbose_name_plural = (_('Graphics of Domain'))
+        
+
+#
+# Graphics Node
+#
+
+class GraphNode(models.Model):
+    node = models.ForeignKey(Node, verbose_name=_('Domain'))
+    img = models.URLField(verify_exists=False)
+    description = models.CharField(_('Descrption'), max_length=100)
+
+    def __unicode__(self):
+        return self.description
+
+    class Meta: 
+        verbose_name = _('Graph')
+        verbose_name_plural = (_('Graphics of Node'))
+                        
+        
+        
+        

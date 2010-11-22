@@ -1,0 +1,35 @@
+K 25
+svn:wc:ra_dav:version-url
+V 39
+/svn/!svn/ver/40/trunk/virttool/lib/app
+END
+snmp.py
+K 25
+svn:wc:ra_dav:version-url
+V 47
+/svn/!svn/ver/31/trunk/virttool/lib/app/snmp.py
+END
+xmltool.py
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/svn/!svn/ver/40/trunk/virttool/lib/app/xmltool.py
+END
+__init__.py
+K 25
+svn:wc:ra_dav:version-url
+V 51
+/svn/!svn/ver/10/trunk/virttool/lib/app/__init__.py
+END
+virtclient.py
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/34/trunk/virttool/lib/app/virtclient.py
+END
+libvirttemplate.py
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/svn/!svn/ver/33/trunk/virttool/lib/app/libvirttemplate.py
+END

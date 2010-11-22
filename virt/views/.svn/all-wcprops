@@ -1,0 +1,41 @@
+K 25
+svn:wc:ra_dav:version-url
+V 42
+/svn/!svn/ver/39/trunk/virttool/virt/views
+END
+home.py
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/svn/!svn/ver/14/trunk/virttool/virt/views/home.py
+END
+base.py
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/svn/!svn/ver/14/trunk/virttool/virt/views/base.py
+END
+__init__.py
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/14/trunk/virttool/virt/views/__init__.py
+END
+device.py
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/36/trunk/virttool/virt/views/device.py
+END
+node.py
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/svn/!svn/ver/39/trunk/virttool/virt/views/node.py
+END
+domain.py
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/34/trunk/virttool/virt/views/domain.py
+END
